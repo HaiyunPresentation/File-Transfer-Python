@@ -76,5 +76,6 @@ if __name__ == '__main__':
 
     for filename in relativePath:
         send(cliSock, filename, src_path)
+    print("传输完毕")
     cliSock.send("\01".encode())
     cliSock.close()

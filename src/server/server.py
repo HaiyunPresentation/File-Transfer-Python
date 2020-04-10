@@ -7,7 +7,7 @@ from pathlib import Path
 BUFSIZ = 1024
 
 
-def recv(cliSock, folder_path):
+def recv(cliSock, dst_path):
     while True:
         data = cliSock.recv(BUFSIZ)  # 接收文件名或错误信息
         if data.decode() == "\01":
@@ -21,7 +21,7 @@ def recv(cliSock, folder_path):
         data = cliSock.recv(BUFSIZ)
         cliSock.send("File size received ".encode())
 
-        savePath = Path(folder_path).joinpath(filePath)
+        savePath = Path(dst_path).joinpath(filePath)
         Path(savePath.parent).mkdir(parents=True, exist_ok=True)
 
         file_total_size = int(data.decode())
@@ -38,14 +38,14 @@ def recv(cliSock, folder_path):
 
 def usage():
     print("Usage: ")
-    print("  python server.py <folder_path> <ip_addr> <port>")
+    print("  python server.py <dst_path> <ip_addr> <port>")
 
 
 if __name__ == '__main__':
     if(len(sys.argv) < 4):
         usage()
     else:
-        folder_path = sys.argv[1]
+        dst_path = sys.argv[1]
         ip_addr = sys.argv[2]
         port = int(sys.argv[3])
 
@@ -57,5 +57,5 @@ if __name__ == '__main__':
         cliSock, addr = serSock.accept()
         print('...连接自:', addr)
 
-        recv(cliSock, folder_path)
+        recv(cliSock, dst_path)
         serSock.close()
