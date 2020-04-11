@@ -1,9 +1,21 @@
 import os
 import sys
+import hashlib
 from socket import *
 from pathlib import Path
 
 BUFSIZ = 1024
+
+
+def getFileMD5(filename):
+    m = hashlib.md5()
+    with open(filename, 'rb') as fobj:
+        while True:
+            data = fobj.read(8192)
+            if not data:
+                break
+            m.update(data)
+    return m.hexdigest()
 
 
 def send(cliSock, filename, src_path):
@@ -14,12 +26,18 @@ def send(cliSock, filename, src_path):
     else:
         rel_path = str(filePath.parent.relative_to(
             src_path).joinpath(filePath.name))
+
     cliSock.send(bytes(rel_path, 'utf-8'))
     data = cliSock.recv(BUFSIZ)
     filesize = str(os.path.getsize(filename))
     print("文件大小为：", filesize)
     cliSock.send(filesize.encode())
-    data = cliSock.recv(BUFSIZ)  # 挂起发送，确保伺服端单独收到文件大小数据，避免粘包
+    data = cliSock.recv(BUFSIZ)
+    md5 = getFileMD5(filename)
+    print("MD5: ", md5)
+    cliSock.send(md5.encode())
+    data = cliSock.recv(BUFSIZ)
+
     print("开始发送")
 
     f = open(filename, "rb")
@@ -28,12 +46,6 @@ def send(cliSock, filename, src_path):
     data = cliSock.recv(BUFSIZ)
 
 
-'''
-    else:
-        print("Given folder path of client not found!")
-        cliSock.send("\0\01".encode())
-        return -1
-'''
 
 
 def getFileList(folder_path):
@@ -53,8 +65,10 @@ def getFileList(folder_path):
 
 
 def usage():
+    print("File Tranfer Client by HaiyunPresentation")
     print("Usage: ")
     print("  python client.py <src_path> <ip_addr> <port>")
+    print("  python3 is recommended in Linux")
 
 
 if __name__ == '__main__':
@@ -67,15 +81,26 @@ if __name__ == '__main__':
     port = int(sys.argv[3])
 
     if os.path.exists(src_path) == False:
-       print("Given folder error!")
+       print("文件夹不存在！")
        sys.exit(1)
     relativePath = getFileList(src_path)
-
-    cliSock = socket(AF_INET, SOCK_STREAM)
-    cliSock.connect((ip_addr, port))
-
-    for filename in relativePath:
-        send(cliSock, filename, src_path)
-    print("传输完毕")
-    cliSock.send("\01".encode())
-    cliSock.close()
+    try:
+        cliSock = socket(AF_INET, SOCK_STREAM)
+        cliSock.connect((ip_addr, port))
+        for filename in relativePath:
+            send(cliSock, filename, src_path)
+        print("传输完毕")
+        cliSock.send("\01".encode())
+        cliSock.close()
+    except gaierror:
+        print("IP地址不正确！")
+    except OverflowError:
+        print("端口号不正确！")
+    except ConnectionAbortedError:
+        print("服务器端连接中止...")
+    except ConnectionResetError:
+        print("连接已重置...")
+    except ConnectionRefusedError:
+        print("目标服务器拒绝建立连接！")
+    except KeyboardInterrupt:
+        print("强制中断...")
