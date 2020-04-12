@@ -30,21 +30,30 @@ def send(cliSock, filename, src_path):
     cliSock.send(bytes(rel_path, 'utf-8'))
     data = cliSock.recv(BUFSIZ)
     filesize = str(os.path.getsize(filename))
-    print("文件大小为：", filesize)
+    print("文件：", filename, "大小为：", filesize)
     cliSock.send(filesize.encode())
     data = cliSock.recv(BUFSIZ)
     md5 = getFileMD5(filename)
     print("MD5: ", md5)
     cliSock.send(md5.encode())
-    data = cliSock.recv(BUFSIZ)
-
-    print("开始发送")
-
+    sendInfo = cliSock.recv(BUFSIZ)
+    if sendInfo == b'none':
+        print('不必更新')
+        return 0
     f = open(filename, "rb")
-    for line in f:
-        cliSock.send(line)
-    data = cliSock.recv(BUFSIZ)
+    if sendInfo == b'all':
+        print("开始发送")
+    else:  # 断点续传
+        sent_packet_num = int(sendInfo)
+        f.read(BUFSIZ*sent_packet_num)
+        print("开始断点续传")
+    while True:
+        data = f.read(BUFSIZ)
+        if not data:
+            break
+        cliSock.send(data)
 
+    data = cliSock.recv(BUFSIZ)
 
 
 

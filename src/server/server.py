@@ -32,25 +32,62 @@ def recv(cliSock, dst_path):
         filePath = data.decode("utf-8")
         print("Received File Path: "+filePath)
         cliSock.send("Get path".encode())
-
         fileSize = int(cliSock.recv(BUFSIZ).decode())
         cliSock.send("File size received ".encode())
+
         md5 = cliSock.recv(BUFSIZ).decode()
-        cliSock.send("md5 received".encode())
 
         savePath = Path(dst_path).joinpath(filePath)
+        tempPath = savePath.parent.joinpath(savePath.name+".tmp")
         Path(savePath.parent).mkdir(parents=True, exist_ok=True)
+        is_append = False
+        if os.path.exists(savePath):
+            if os.path.exists(tempPath):
+                ftemp = open(tempPath, "r")
+                ftempList = ftemp.readlines()
+                ftemp.close()
+                oldmd5 = ftempList[0].rstrip('\n')
+                received_packet_num = int(ftempList[1])
+                if oldmd5 == md5:
+                    print('准备断点续传')
+                    cliSock.send(str(received_packet_num).encode())
+                    is_append = True
+                else:
+                    print('old md5=', oldmd5, '$\nnew md5=', md5, '$')
+                    print('客户端文件有更新')
+                    cliSock.send("all".encode())
+            else:
+                oldmd5 = getFileMD5(savePath)
+                if oldmd5 == md5:
+                    print('不必更新')
+                    cliSock.send("none".encode())
+                    continue
+                else:
+                    print('客户端文件有更新')
+                    cliSock.send("all".encode())
+        else:
+            cliSock.send("all".encode())
 
         received_size = 0
         packet_num = 0
-        f = open(savePath, "wb")
+        if is_append:
+            f = open(savePath, "ab")
+            packet_num += received_packet_num
+            received_size += received_packet_num*BUFSIZ
+        else:
+            f = open(savePath, "wb")
 
         # 断点续传大法
         while received_size < fileSize:
             data = cliSock.recv(BUFSIZ)
             if len(data) == 0:
                 print("客户端可能中断了连接，等待下次连接断点续传。已传输包数：", packet_num)
-
+                f.close()
+                ftemp = open(savePath.parent.joinpath(
+                    savePath.name+".tmp"), "w")
+                ftemp.write(md5+'\n')
+                ftemp.write(str(packet_num))
+                ftemp.close()
                 return -1
             packet_num += 1
             f.write(data)
@@ -61,9 +98,11 @@ def recv(cliSock, dst_path):
         if md5Dst == md5:
             print("Received MD5 = ", md5)
         else:
-            print("Received MD5 = ", md5Dst, " but expected = ", md5)
+            print("Received MD5 in fact = ", md5Dst, " but expected = ", md5)
 
         cliSock.send("Received ".encode())
+        if os.path.exists(tempPath):
+            os.remove(tempPath)
 
 
 def usage():
@@ -96,7 +135,7 @@ if __name__ == '__main__':
     except OverflowError:
         print("端口号不正确！")
     except OSError:
-        print("套接字访问被拒绝。端口可能被占用。")
+        print("系统错误。可能原因：套接字访问被拒绝，端口可能被占用。")
     except ConnectionAbortedError:
         print("客户端连接中止...")
     except KeyboardInterrupt:
