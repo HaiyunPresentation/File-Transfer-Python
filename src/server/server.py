@@ -1,6 +1,7 @@
 import os
 import sys
 import hashlib
+import zipfile
 from socket import *
 from pathlib import Path
 #from time import ctime
@@ -32,14 +33,28 @@ def recv(cliSock, dst_path):
         filePath = data.decode("utf-8")
         print("Received File Path: "+filePath)
         cliSock.send("Get path".encode())
+        is_compressed = int(cliSock.recv(BUFSIZ).decode())
+        cliSock.send("if compressed received ".encode())
         fileSize = int(cliSock.recv(BUFSIZ).decode())
         cliSock.send("File size received ".encode())
 
-        md5 = cliSock.recv(BUFSIZ).decode()
-
         savePath = Path(dst_path).joinpath(filePath)
         tempPath = savePath.parent.joinpath(savePath.name+".tmp")
+        originalSavePath = ""
         Path(savePath.parent).mkdir(parents=True, exist_ok=True)
+        if is_compressed == 1:
+            #print("compressed")
+            originalSavePath=savePath
+            savePath = savePath.parent.joinpath(originalSavePath.name+"tempzip")
+
+        uncomparessed_md5 = ""
+
+        if is_compressed == 1:
+            uncomparessed_md5 = cliSock.recv(BUFSIZ).decode()
+            cliSock.send("uncomparessed_md5 received".encode())
+
+        md5 = cliSock.recv(BUFSIZ).decode()
+
         is_append = False
         if os.path.exists(savePath):
             if os.path.exists(tempPath):
@@ -65,6 +80,12 @@ def recv(cliSock, dst_path):
                 else:
                     print('客户端文件有更新')
                     cliSock.send("all".encode())
+        elif is_compressed == 1 and os.path.exists(originalSavePath):
+            old_uncomparessed_md5 = getFileMD5(originalSavePath)
+            if old_uncomparessed_md5 == uncomparessed_md5:
+                print('不必更新')
+                cliSock.send("none".encode())
+                break
         else:
             cliSock.send("all".encode())
 
@@ -97,10 +118,20 @@ def recv(cliSock, dst_path):
         md5Dst = getFileMD5(savePath)
         if md5Dst == md5:
             print("Received MD5 = ", md5)
+            if is_compressed == 1:
+                zfile = zipfile.ZipFile(savePath)
+                zfile.extractall(originalSavePath.parent)
+                #zfile.extractall(Path(dst_path).joinpath(os.path.dirname(originalSavePath)))
+                #print(os.path.dirname(originalSavePath).joinpath("\\"))
+                zfile.close()
         else:
             print("Received MD5 in fact = ", md5Dst, " but expected = ", md5)
 
         cliSock.send("Received ".encode())
+
+        ##如果已经压缩文件且已经解压则删除压缩文件
+        if originalSavePath!="" and os.path.exists(originalSavePath):
+            os.remove(savePath)
         if os.path.exists(tempPath):
             os.remove(tempPath)
 

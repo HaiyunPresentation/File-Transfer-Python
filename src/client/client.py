@@ -1,6 +1,7 @@
 import os
 import sys
 import hashlib
+import zipfile
 from socket import *
 from pathlib import Path
 
@@ -29,10 +30,28 @@ def send(cliSock, filename, src_path):
 
     cliSock.send(bytes(rel_path, 'utf-8'))
     data = cliSock.recv(BUFSIZ)
-    filesize = str(os.path.getsize(filename))
-    print("文件：", filename, "大小为：", filesize)
-    cliSock.send(filesize.encode())
+    filesize = os.path.getsize(filename)
+    #记录是否被压缩
+    is_compressed = 0
+    print("文件：", filename, "大小为：", str(filesize))
+    if filesize>1024*1024*10:
+        originalFilename = filename
+        filename+="tempzip"
+        with zipfile.ZipFile(filename, mode='w') as zfile:
+            zfile.write(originalFilename,os.path.basename(originalFilename))
+        filesize = os.path.getsize(filename)
+        is_compressed = 1
+    cliSock.send(str(is_compressed).encode())
+
     data = cliSock.recv(BUFSIZ)
+
+    cliSock.send(str(filesize).encode())
+    data = cliSock.recv(BUFSIZ)
+    if is_compressed == 1:
+        uncomparessed_md5 = getFileMD5(originalFilename)
+        #print("uncomparessed MD5: ",uncomparessed_md5)
+        cliSock.send(uncomparessed_md5.encode())
+        sendInfo = cliSock.recv(BUFSIZ)
     md5 = getFileMD5(filename)
     print("MD5: ", md5)
     cliSock.send(md5.encode())
@@ -44,6 +63,7 @@ def send(cliSock, filename, src_path):
     if sendInfo == b'all':
         print("开始发送")
     else:  # 断点续传
+        print(sendInfo)
         sent_packet_num = int(sendInfo)
         f.read(BUFSIZ*sent_packet_num)
         print("开始断点续传")
@@ -54,6 +74,9 @@ def send(cliSock, filename, src_path):
         cliSock.send(data)
 
     data = cliSock.recv(BUFSIZ)
+    f.close()
+    if is_compressed == 1:
+        os.remove(filename)
 
 
 
