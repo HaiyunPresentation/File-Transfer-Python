@@ -20,6 +20,9 @@ def getFileMD5(filename):
 
 
 def send(cliSock, filename, src_path):
+    if not os.path.exists(filename):
+        print('找不到', filename)
+        return 0
     filePath = Path(filename)
     rel_path = ''
     if(filePath.parent.name == ''):
@@ -33,12 +36,12 @@ def send(cliSock, filename, src_path):
     filesize = os.path.getsize(filename)
     #记录是否被压缩
     is_compressed = 0
-    print("文件：", filename, "大小为：", str(filesize))
-    if filesize>1024*1024*10:
+    print('文件：', filename, '原始大小：', str(filesize))
+    if filesize <= 1024*1024*10:
         originalFilename = filename
-        filename+="tempzip"
+        filename += '.tempzip'
         with zipfile.ZipFile(filename, mode='w') as zfile:
-            zfile.write(originalFilename,os.path.basename(originalFilename))
+            zfile.write(originalFilename, os.path.basename(originalFilename))
         filesize = os.path.getsize(filename)
         is_compressed = 1
     cliSock.send(str(is_compressed).encode())
@@ -49,24 +52,31 @@ def send(cliSock, filename, src_path):
     data = cliSock.recv(BUFSIZ)
     if is_compressed == 1:
         uncomparessed_md5 = getFileMD5(originalFilename)
-        #print("uncomparessed MD5: ",uncomparessed_md5)
+        #print('uncomparessed MD5: ',uncomparessed_md5)
         cliSock.send(uncomparessed_md5.encode())
         sendInfo = cliSock.recv(BUFSIZ)
     md5 = getFileMD5(filename)
-    print("MD5: ", md5)
+    print('MD5: ', md5)
     cliSock.send(md5.encode())
     sendInfo = cliSock.recv(BUFSIZ)
     if sendInfo == b'none':
         print('不必更新')
+        if is_compressed == 1 and os.path.exists(filename):
+            os.remove(filename)
         return 0
-    f = open(filename, "rb")
+    f = open(filename, 'rb')
     if sendInfo == b'all':
-        print("开始发送")
+        print('开始发送')
     else:  # 断点续传
         print(sendInfo)
-        sent_packet_num = int(sendInfo)
+        try:
+            sent_packet_num = int(sendInfo)
+        except ValueError:
+            print('收到的信息有误。可能原因：服务器协议不一致或连接超时。')
+            f.close()
+            return 2
         f.read(BUFSIZ*sent_packet_num)
-        print("开始断点续传")
+        print('开始断点续传')
     while True:
         data = f.read(BUFSIZ)
         if not data:
@@ -77,7 +87,6 @@ def send(cliSock, filename, src_path):
     f.close()
     if is_compressed == 1:
         os.remove(filename)
-
 
 
 def getFileList(folder_path):
@@ -97,10 +106,10 @@ def getFileList(folder_path):
 
 
 def usage():
-    print("File Tranfer Client by HaiyunPresentation")
-    print("Usage: ")
-    print("  python client.py <src_path> <ip_addr> <port>")
-    print("  python3 is recommended in Linux")
+    print('File Tranfer Client by HaiyunPresentation')
+    print('Usage: ')
+    print('  python client.py <src_path> <ip_addr> <port>')
+    print('  python3 is recommended in Linux')
 
 
 if __name__ == '__main__':
@@ -113,26 +122,36 @@ if __name__ == '__main__':
     port = int(sys.argv[3])
 
     if os.path.exists(src_path) == False:
-       print("文件夹不存在！")
+       print('文件夹不存在！')
        sys.exit(1)
     relativePath = getFileList(src_path)
     try:
         cliSock = socket(AF_INET, SOCK_STREAM)
         cliSock.connect((ip_addr, port))
         for filename in relativePath:
-            send(cliSock, filename, src_path)
-        print("传输完毕")
-        cliSock.send("\01".encode())
+            if send(cliSock, filename, src_path) == -1:
+                cliSock.close()
+                sys.exit(1)
+        print('传输完毕')
+        cliSock.send('\01'.encode())
         cliSock.close()
     except gaierror:
-        print("IP地址不正确！")
+        print('IP地址不正确！')
     except OverflowError:
-        print("端口号不正确！")
+        print('端口号不正确！')
     except ConnectionAbortedError:
-        print("服务器端连接中止...")
+        print('服务器端连接中止...')
     except ConnectionResetError:
-        print("连接已重置...")
+        print('连接已重置...')
     except ConnectionRefusedError:
-        print("目标服务器拒绝建立连接！")
+        print('目标服务器拒绝建立连接！')
+    except TimeoutError:
+        print('连接超时！')
     except KeyboardInterrupt:
-        print("强制中断...")
+        print('强制中断...')
+    # 异常中断理应清理.tempzip缓存
+    relativePath = getFileList(src_path)
+    for filename in relativePath:
+        if os.path.exists(filename) and filename.endswith('.tempzip'):
+            os.remove(filename)
+    print('已清理传输缓存。')
