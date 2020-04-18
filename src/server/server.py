@@ -1,3 +1,4 @@
+# coding=utf-8
 import os
 import sys
 import hashlib
@@ -141,7 +142,9 @@ def usage():
     print('File Tranfer Server by HaiyunPresentation')
     print('Usage: ')
     print('  python server.py <dst_path> <ip_addr> <port>')
-    print('  python3 is recommended in Linux')
+    print('  python3 is recommended in Linux.')
+    print('  e.g:')
+    print('    python3 server.py 0.0.0.0 2000')
 
 
 if __name__ == '__main__':
@@ -166,8 +169,8 @@ if __name__ == '__main__':
         print('IP地址不正确！')
     except OverflowError:
         print('端口号不正确！')
-    except OSError:
-        print('系统错误。可能原因：套接字访问被拒绝，端口可能被占用。')
+    except OSError as info:
+        print('系统错误。\n', info)
     except ConnectionAbortedError:
         print('客户端连接中止...')
     except KeyboardInterrupt:
