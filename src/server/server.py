@@ -144,7 +144,7 @@ def usage():
     print('  python server.py <dst_path> <ip_addr> <port>')
     print('  python3 is recommended in Linux.')
     print('  e.g:')
-    print('    python3 server.py 0.0.0.0 2000')
+    print('    python3 server.py test 0.0.0.0 2000')
 
 
 if __name__ == '__main__':
