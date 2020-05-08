@@ -5,8 +5,10 @@ import hashlib
 import zipfile
 from socket import *
 from pathlib import Path
+#import time
 
 BUFSIZ = 1024
+#total_datasize = 0
 
 
 def getFileMD5(filename):
@@ -37,7 +39,7 @@ def send(cliSock, filename, src_path):
     filesize = os.path.getsize(filename)
     #记录是否被压缩
     is_compressed = 0
-    print('文件：', filename, '原始大小：', str(filesize))
+    print('------\n文件：', filename, '原始大小：', str(filesize))
     if filesize <= 1024*1024*10:
         originalFilename = filename
         filename += '.tempzip'
@@ -66,8 +68,12 @@ def send(cliSock, filename, src_path):
             os.remove(filename)
         return 0
     f = open(filename, 'rb')
+
+    #global total_datasize  # 引用全局变量
+
     if sendInfo == b'all':
         print('开始发送')
+        #total_datasize += filesize
     else:  # 断点续传
         print(sendInfo)
         try:
@@ -78,6 +84,7 @@ def send(cliSock, filename, src_path):
             return 2
         f.read(BUFSIZ*sent_packet_num)
         print('开始断点续传')
+        #total_datasize += (filesize-BUFSIZ*sent_packet_num)
     while True:
         data = f.read(BUFSIZ)
         if not data:
@@ -85,6 +92,7 @@ def send(cliSock, filename, src_path):
         cliSock.send(data)
 
     data = cliSock.recv(BUFSIZ)
+    print(data.decode())
     f.close()
     if is_compressed == 1:
         os.remove(filename)
@@ -122,6 +130,7 @@ if __name__ == '__main__':
     ip_addr = sys.argv[2]
     port = int(sys.argv[3])
 
+    #beginTime = time.time()
     if os.path.exists(src_path) == False:
        print('文件夹不存在！')
        sys.exit(1)
@@ -133,7 +142,15 @@ if __name__ == '__main__':
             if send(cliSock, filename, src_path) == -1:
                 cliSock.close()
                 sys.exit(1)
-        print('传输完毕')
+        print('------\n传输完毕')
+        '''
+        endTime = time.time()
+        print('总传输速率：', end='')
+        if (endTime-beginTime == 0):
+            print('NaN Mbps')
+        else:
+            print(str(total_datasize/(endTime-beginTime)/1024/1024*8)+' Mbps')
+        '''
         cliSock.send('\01'.encode())
         cliSock.close()
     except gaierror:

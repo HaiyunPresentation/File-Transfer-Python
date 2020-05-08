@@ -5,7 +5,7 @@ import hashlib
 import zipfile
 from socket import *
 from pathlib import Path
-#from time import ctime
+#import time
 
 BUFSIZ = 1024
 
@@ -32,7 +32,7 @@ def recv(cliSock, dst_path):
             return 0
 
         filePath = data.decode('utf-8')
-        print('Received File Path: '+filePath)
+        print('------\nReceived File Path: '+filePath)
         cliSock.send('Get path'.encode())
         is_compressed = int(cliSock.recv(BUFSIZ).decode())
         cliSock.send('if compressed received '.encode())
@@ -100,8 +100,12 @@ def recv(cliSock, dst_path):
         else:
             f = open(savePath, 'wb')
 
+        # beginTime = time.time()
+
         # 断点续传大法
         while received_size < fileSize:
+           # nowTime = time.time()
+            print('\r已下载:'+str("%f" % (received_size/fileSize*100))+'%', end='')
             data = cliSock.recv(BUFSIZ)
             if len(data) == 0:
                 print('客户端可能中断了连接，等待下次连接断点续传。已传输包数：', packet_num)
@@ -115,8 +119,22 @@ def recv(cliSock, dst_path):
             packet_num += 1
             f.write(data)
             received_size += len(data)
-            #print('已接收：', received_size)
+
         f.close()
+        print('\r已下载：'+str("%f" % (received_size/fileSize*100))+'%')
+        '''
+        endTime = time.time()
+        if (endTime-beginTime == 0):
+            print('Speed=NaN MB/s')
+        else:
+            if(is_append):
+                speed = (fileSize-received_packet_num*BUFSIZ) / \
+                    (endTime-beginTime)
+            else:
+                speed = fileSize/(endTime-beginTime)
+            print('Speed='+str(speed/1024/1024)+' MB/s')
+        '''
+
         md5Dst = getFileMD5(savePath)
         if md5Dst == md5:
             print('Received MD5 = ', md5)
@@ -126,10 +144,10 @@ def recv(cliSock, dst_path):
                 #zfile.extractall(Path(dst_path).joinpath(os.path.dirname(originalSavePath)))
                 #print(os.path.dirname(originalSavePath).joinpath('\\'))
                 zfile.close()
+            cliSock.send('True Received '.encode())
         else:
             print('Received MD5 in fact = ', md5Dst, ' but expected = ', md5)
-
-        cliSock.send('Received '.encode())
+            cliSock.send('False Received '.encode())
 
         ##如果已经压缩文件且已经解压则删除压缩文件
         if originalSavePath != '' and os.path.exists(originalSavePath):
@@ -158,7 +176,7 @@ if __name__ == '__main__':
         serSock = socket(AF_INET, SOCK_STREAM)  # 定义套接字
         serSock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         serSock.bind((ip_addr, port))  # 绑定地址
-        serSock.listen(5)  # 规定传入连接请求的最大数，适用于异步
+        serSock.listen(1)  # 规定传入连接请求的最大数，适用于异步
         print('等待连接...')
 
         cliSock, addr = serSock.accept()
@@ -171,6 +189,8 @@ if __name__ == '__main__':
         print('端口号不正确！')
     except OSError as info:
         print('系统错误。\n', info)
+    except TypeError as info:
+        print('类型错误。客户端可能中断了连接。\n', info)
     except ConnectionAbortedError:
         print('客户端连接中止...')
     except KeyboardInterrupt:
