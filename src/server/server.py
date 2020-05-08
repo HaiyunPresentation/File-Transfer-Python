@@ -39,6 +39,7 @@ def recv(cliSock, dst_path):
         fileSize = int(cliSock.recv(BUFSIZ).decode())
         cliSock.send('File size received '.encode())
 
+        filePath = filePath.replace('\\', '/')  # 适配Linux路径
         savePath = Path(dst_path).joinpath(filePath)
         tempPath = savePath.parent.joinpath(savePath.name+'.tmp')
         originalSavePath = ''
