@@ -22,7 +22,7 @@ def getFileMD5(filename):
     return m.hexdigest()
 
 
-def send(cliSock, filename, src_path):
+def send(cliSock, filename, src_path, mode):
     if not os.path.exists(filename):
         print('找不到', filename)
         return 0
@@ -40,7 +40,7 @@ def send(cliSock, filename, src_path):
     #记录是否被压缩
     is_compressed = 0
     print('------\n文件：', filename, '原始大小：', str(filesize))
-    if filesize <= 1024*1024*10:
+    if mode=='compress' and filesize <= 1024*1024*10:
         originalFilename = filename
         filename += '.tempzip'
         with zipfile.ZipFile(filename, mode='w') as zfile:
@@ -117,19 +117,25 @@ def getFileList(folder_path):
 def usage():
     print('File Tranfer Client by HaiyunPresentation')
     print('Usage: ')
-    print('  python client.py <src_path> <ip_addr> <port>')
-    print('  python3 is recommended in Linux')
+    print('  1. Normal mode (default)')
+    print('    python client.py <src_path> <ip_addr> <port>')
+    print('  2. Compression mode (for small files)')
+    print('    python client.py <src_path> <ip_addr> <port> --compress')
+    print('  \'python3\' is recommended in Linux')
 
 
 if __name__ == '__main__':
-    if(len(sys.argv) < 4):
+    if len(sys.argv) < 4 | (len(sys.argv)>=5 and sys.argv[5]!='--compress'):
         usage()
         sys.exit(1)
 
     src_path = sys.argv[1]
     ip_addr = sys.argv[2]
     port = int(sys.argv[3])
-
+    if len(sys.argv)==4:
+        mode='normal'
+    else:
+        mode='compress'
     #beginTime = time.time()
     if os.path.exists(src_path) == False:
        print('文件夹不存在！')
@@ -139,7 +145,7 @@ if __name__ == '__main__':
         cliSock = socket(AF_INET, SOCK_STREAM)
         cliSock.connect((ip_addr, port))
         for filename in relativePath:
-            if send(cliSock, filename, src_path) == -1:
+            if send(cliSock, filename, src_path, mode) == -1:
                 cliSock.close()
                 sys.exit(1)
         print('------\n传输完毕')

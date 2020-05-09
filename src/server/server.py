@@ -105,7 +105,7 @@ def recv(cliSock, dst_path):
 
         # 断点续传大法
         while received_size < fileSize:
-           # nowTime = time.time()
+            # nowTime = time.time()
             print('\r已下载:'+str("%f" % (received_size/fileSize*100))+'%', end='')
             data = cliSock.recv(BUFSIZ)
             if len(data) == 0:
