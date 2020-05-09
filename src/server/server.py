@@ -41,7 +41,7 @@ def recv(cliSock, dst_path):
 
         filePath = filePath.replace('\\', '/')  # 适配Linux路径
         savePath = Path(dst_path).joinpath(filePath)
-        tempPath = savePath.parent.joinpath(savePath.name+'.tmp')
+        tempPath = savePath.parent.joinpath(savePath.name+'tmp')
         originalSavePath = ''
         Path(savePath.parent).mkdir(parents=True, exist_ok=True)
         if is_compressed == 1:
