@@ -1,5 +1,6 @@
 # coding=utf-8
 import os
+import re
 import sys
 import hashlib
 import zipfile
@@ -41,7 +42,7 @@ def recv(cliSock, dst_path):
 
         filePath = filePath.replace('\\', '/')  # 适配Linux路径
         savePath = Path(dst_path).joinpath(filePath)
-        tempPath = savePath.parent.joinpath(savePath.name+'tmp')
+        tempPath = savePath.parent.joinpath(savePath.name+'fileinfotmp')
         originalSavePath = ''
         Path(savePath.parent).mkdir(parents=True, exist_ok=True)
         if is_compressed == 1:
@@ -112,7 +113,7 @@ def recv(cliSock, dst_path):
                 print('客户端可能中断了连接，等待下次连接断点续传。已传输包数：', packet_num)
                 f.close()
                 ftemp = open(savePath.parent.joinpath(
-                    savePath.name+'.tmp'), 'w')
+                    savePath.name+'fileinfotmp'), 'w')
                 ftemp.write(md5+'\n')
                 ftemp.write(str(packet_num))
                 ftemp.close()
@@ -166,13 +167,7 @@ def usage():
     print('    python3 server.py test 0.0.0.0 2000')
 
 
-if __name__ == '__main__':
-    if(len(sys.argv) < 4):
-        usage()
-        sys.exit(1)
-    dst_path = sys.argv[1]
-    ip_addr = sys.argv[2]
-    port = int(sys.argv[3])
+def buildSock(dst_path, ip_addr, port):
     try:
         serSock = socket(AF_INET, SOCK_STREAM)  # 定义套接字
         serSock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -184,15 +179,41 @@ if __name__ == '__main__':
         print('...连接自：', addr)
         recv(cliSock, dst_path)
         serSock.close()
+        return 0
     except gaierror:
         print('IP地址不正确！')
+        return -1
     except OverflowError:
         print('端口号不正确！')
+        return -1
     except OSError as info:
         print('系统错误。\n', info)
+        if re.match(r'\[WinError 10054\].+', str(info)):  # 远程主机强迫关闭了一个现有的连接
+            return 1
+        else:
+            return -1
+    except ValueError as info:
+        print('值错误。客户端可能中断了连接。\n', info)
+        return 1
     except TypeError as info:
         print('类型错误。客户端可能中断了连接。\n', info)
+        return 1
     except ConnectionAbortedError:
         print('客户端连接中止...')
+        return 1
     except KeyboardInterrupt:
         print('强制中断...')
+        return -1
+
+
+if __name__ == '__main__':
+    if(len(sys.argv) < 4):
+        usage()
+        sys.exit(1)
+    dst_path = sys.argv[1]
+    ip_addr = sys.argv[2]
+    port = int(sys.argv[3])
+    status = buildSock(dst_path, ip_addr, port)
+    while (status == 1):
+        print('尝试重建socket...')
+        status = buildSock(dst_path, ip_addr, port)

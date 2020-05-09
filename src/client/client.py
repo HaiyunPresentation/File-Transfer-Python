@@ -42,7 +42,7 @@ def send(cliSock, filename, src_path, mode):
     print('------\n文件：', filename, '原始大小：', str(filesize))
     if mode=='compress' and filesize <= 1024*1024*10:
         originalFilename = filename
-        filename += '.tempzip'
+        filename += 'tempzip'
         with zipfile.ZipFile(filename, mode='w') as zfile:
             zfile.write(originalFilename, os.path.basename(originalFilename))
         filesize = os.path.getsize(filename)
@@ -168,6 +168,8 @@ if __name__ == '__main__':
         print('IP地址不正确！')
     except OverflowError:
         print('端口号不正确！')
+    except TypeError as info:
+        print('类型错误。服务器端可能中断了连接。\n', info)
     except ConnectionAbortedError:
         print('服务器端连接中止...')
     except ConnectionResetError:
@@ -181,6 +183,6 @@ if __name__ == '__main__':
     # 异常中断理应清理.tempzip缓存
     relativePath = getFileList(src_path)
     for filename in relativePath:
-        if os.path.exists(filename) and filename.endswith('.tempzip'):
+        if os.path.exists(filename) and filename.endswith('tempzip'):
             os.remove(filename)
     print('已清理传输缓存。')
