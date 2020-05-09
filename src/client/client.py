@@ -5,7 +5,7 @@ import hashlib
 import zipfile
 from socket import *
 from pathlib import Path
-#import time
+import time
 
 BUFSIZ = 1024
 #total_datasize = 0
@@ -90,10 +90,14 @@ def send(cliSock, filename, src_path, mode):
         if not data:
             break
         cliSock.send(data)
-
+    f.close()
     data = cliSock.recv(BUFSIZ)
     print(data.decode())
-    f.close()
+    if data.decode()=='False Received':
+        log=open('err.log', 'a')
+        log.write(str(time.time())+' '+filename+' '+'False \n')
+        log.close()
+    
     if is_compressed == 1:
         os.remove(filename)
 
@@ -125,7 +129,7 @@ def usage():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4 | (len(sys.argv)>=5 and sys.argv[5]!='--compress'):
+    if len(sys.argv) < 4 or (len(sys.argv)>=5 and sys.argv[4]!='--compress'):
         usage()
         sys.exit(1)
 
@@ -136,6 +140,7 @@ if __name__ == '__main__':
         mode='normal'
     else:
         mode='compress'
+        
     #beginTime = time.time()
     if os.path.exists(src_path) == False:
        print('文件夹不存在！')
