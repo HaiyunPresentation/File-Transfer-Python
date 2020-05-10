@@ -111,7 +111,7 @@ class MyMainServerForm(QMainWindow, Ui_Form):
     def __init__(self, parent=None):
         super(MyMainServerForm, self).__init__(parent)
         self.setupUi(self)
-        self.setWindowTitle("Client")
+        self.setWindowTitle("FileTransfer Client by HaiyunPresentation")
         self.__signal.connect(self.mySignal)
         self.pushButton.clicked.connect(self.openFile)
 
