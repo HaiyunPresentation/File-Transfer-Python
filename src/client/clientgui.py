@@ -12,6 +12,8 @@ import zipfile
 import time
 from socket import *
 from pathlib import Path
+if hasattr(sys, 'frozen'):
+    os.environ['PATH'] = sys._MEIPASS + ";" + os.environ['PATH']
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QFileDialog, QApplication, QMessageBox
@@ -49,54 +51,44 @@ def getFileList(folder_path):
 class Ui_Form(object):
     def setupUi(self, Form):
         Form.setObjectName("Form")
-        Form.resize(800, 432)
-        Form.setFixedSize(800, 432)
-        #状态 标签
-        self.infoLabel = QtWidgets.QLabel(Form)
-        self.infoLabel.setGeometry(QtCore.QRect(20, 10, 750, 40))
-        self.infoLabel.setObjectName("infoLabel")
+        Form.resize(780, 400)
+        Form.setFixedSize(780, 400)
+
         #显示框  输出信息
         self.textBrowser = QtWidgets.QTextBrowser(Form)
-        self.textBrowser.setGeometry(QtCore.QRect(20, 50, 760, 192))
+        self.textBrowser.setGeometry(QtCore.QRect(20, 60, 560, 320))
         self.textBrowser.setObjectName("textBrowser")
-        self.textBrowser.setFontPointSize(13)
         #IP地址标签
         self.ipLabel = QtWidgets.QLabel(Form)
-        self.ipLabel.setGeometry(QtCore.QRect(30, 260, 72, 31))
+        self.ipLabel.setGeometry(QtCore.QRect(600, 70, 50, 30))
         self.ipLabel.setObjectName("ipLabel")
         #编辑IP地址
         self.ipTextEdit = QtWidgets.QTextEdit(Form)
-        self.ipTextEdit.setGeometry(QtCore.QRect(90, 260, 201, 31))
+        self.ipTextEdit.setGeometry(QtCore.QRect(600, 110, 160, 30))
         self.ipTextEdit.setObjectName("ipTextEdit")
         #端口标签
         self.portLabel = QtWidgets.QLabel(Form)
-        self.portLabel.setGeometry(QtCore.QRect(320, 260, 72, 31))
+        self.portLabel.setGeometry(QtCore.QRect(600, 160, 50, 30))
         self.portLabel.setObjectName("portLabel")
         #编辑端口
         self.portTextEdit = QtWidgets.QTextEdit(Form)
-        self.portTextEdit.setGeometry(QtCore.QRect(360, 260, 121, 31))
+        self.portTextEdit.setGeometry(QtCore.QRect(600, 200, 160, 30))
         self.portTextEdit.setObjectName("portTextEdit")
         #打开文件目录 选择文件
         self.pushButton = QtWidgets.QPushButton(Form)
-        self.pushButton.setGeometry(QtCore.QRect(500, 260, 93, 31))
+        self.pushButton.setGeometry(QtCore.QRect(660, 15, 100, 35))
         self.pushButton.setObjectName("pushButton")
         #编辑 文件路径
         self.pathTextEdit = QtWidgets.QTextEdit(Form)
-        self.pathTextEdit.setGeometry(QtCore.QRect(600, 260, 201, 31))
+        self.pathTextEdit.setGeometry(QtCore.QRect(20, 15, 625, 35))
         self.pathTextEdit.setObjectName("pathTextEdit")
-        #无用的分割线
-        self.line = QtWidgets.QFrame(Form)
-        self.line.setGeometry(QtCore.QRect(0, 310, 801, 20))
-        self.line.setFrameShape(QtWidgets.QFrame.HLine)
-        self.line.setFrameShadow(QtWidgets.QFrame.Sunken)
-        self.line.setObjectName("line")
         #发送按钮，  点击开始传输文件
         self.sendButton = QtWidgets.QPushButton(Form)
-        self.sendButton.setGeometry(QtCore.QRect(190, 347, 111, 41))
+        self.sendButton.setGeometry(QtCore.QRect(630, 250, 100, 50))
         self.sendButton.setObjectName("sendButton")
         #取消按钮， 传输过程中中断传输
         self.cancelButton = QtWidgets.QPushButton(Form)
-        self.cancelButton.setGeometry(QtCore.QRect(492, 347, 101, 41))
+        self.cancelButton.setGeometry(QtCore.QRect(630, 320, 100, 50))
         self.cancelButton.setObjectName("cancelButton")
         self.cancelButton.setEnabled(False)
         self.retranslateUi(Form)
@@ -105,7 +97,6 @@ class Ui_Form(object):
     def retranslateUi(self, Form):
         _translate = QtCore.QCoreApplication.translate
         Form.setWindowTitle(_translate("Form", "Form"))
-        self.infoLabel.setText(_translate("Form", "状态栏"))
         self.ipLabel.setText(_translate("Form", "IP地址"))
         self.portLabel.setText(_translate("Form", "端口"))
         self.pushButton.setText(_translate("Form", "打开文件夹"))
@@ -140,7 +131,7 @@ class MyMainServerForm(QMainWindow, Ui_Form):
 
     def send(self, cliSock, filename, src_path, mode):
         if not os.path.exists(filename):
-            self._signal.emit('找不到'+filename+'\n')
+            self.__signal.emit('找不到'+filename+'\n')
             return 0
         filePath = Path(filename)
         rel_path = ''
@@ -149,82 +140,99 @@ class MyMainServerForm(QMainWindow, Ui_Form):
         else:
             rel_path = str(filePath.parent.relative_to(
                 src_path).joinpath(filePath.name))
-
-        cliSock.send(bytes(rel_path, 'utf-8'))
-        data = cliSock.recv(BUFSIZ)
-        filesize = os.path.getsize(filename)
+    
+        pathLen = len(rel_path.encode('utf-8'))
+    
+        # 发送路径长度和相对路径
+        cliSock.send(pathLen.to_bytes(4, byteorder='big'))
+        cliSock.send(rel_path.encode('utf-8'))
+    
+        fileSize = os.path.getsize(filename)
+    
         #记录是否被压缩
         is_compressed = 0
-        self.__signal.emit(
-            '------\n文件：'+filename+'原始大小：'+str(filesize)+'\n')
-
-        if mode == 'normal' and filesize >= 1024*1024*10:
+        #print('------\n文件：', filename, '原始大小：', str(fileSize))
+        if mode == 'compress' and fileSize <= 1024*1024*10:
             originalFilename = filename
             filename += 'tempzip'
             with zipfile.ZipFile(filename, mode='w') as zfile:
-                zfile.write(originalFilename,
-                            os.path.basename(originalFilename))
-            filesize = os.path.getsize(filename)
+                zfile.write(originalFilename, os.path.basename(originalFilename))
+            fileSize = os.path.getsize(filename)
             is_compressed = 1
-        cliSock.send(str(is_compressed).encode())
+    
+        # 发送是否压缩
+        cliSock.send(is_compressed.to_bytes(1, byteorder='big'))
+    
+        # 发送传输文件（原始文件或压缩文件）大小
+        cliSock.send(fileSize.to_bytes(8, byteorder='big'))
 
-        data = cliSock.recv(BUFSIZ)
-
-        cliSock.send(str(filesize).encode())
-        data = cliSock.recv(BUFSIZ)
-        if is_compressed == 1:
-            uncomparessed_md5 = getFileMD5(originalFilename)
-            #print('uncomparessed MD5: ',uncomparessed_md5)
-            cliSock.send(uncomparessed_md5.encode())
-            sendInfo = cliSock.recv(BUFSIZ)
-        md5 = getFileMD5(filename)
-        self.__signal.emit('MD5: ' + md5 + '\n')
-
-        cliSock.send(md5.encode())
-        sendInfo = cliSock.recv(BUFSIZ)
-        if sendInfo == b'none':
-            self.__signal.emit('不必更新\n')
+        sendInfo = cliSock.recv(3)
+        if sendInfo == b'old':
+            if is_compressed == 1:
+                md5 = getFileMD5(originalFilename)
+            else:
+                md5 = getFileMD5(filename)
+            # 发送原始文件MD5
+            cliSock.send(md5.encode())
+            sendInfo = cliSock.recv(3)
+    
+        if sendInfo == b'non':
+            self.__signal.emit('------\n不必更新'+filename+'\n')
             if is_compressed == 1 and os.path.exists(filename):
                 os.remove(filename)
             return 0
         f = open(filename, 'rb')
-
+    
         #global total_datasize  # 引用全局变量
-
+    
+        sent_size = 0
         if sendInfo == b'all':
-            self.__signal.emit('开始发送\n')
-
-        #total_datasize += filesize
+            self.__signal.emit('------\n开始发送'+filename+'\n')
+            #total_datasize += filesize
         else:  # 断点续传
-            self.__signal.emit(sendInfo+'\n')
-
+            self.__signal.emit(sendInfo)
+            sendInfo=cliSock.recv(BUFSIZ).decode()
+            self.__signal.emit(sendInfo)
             try:
                 sent_packet_num = int(sendInfo)
             except ValueError:
-                self.__signal.emit('收到的信息有误。可能原因：服务器协议不一致或连接超时。\n')
-
+                self.__signal.emit('收到的信息有误。可能原因：服务器协议不一致或连接超时。')
                 f.close()
                 return 2
+            sent_size+=BUFSIZ*sent_packet_num
             f.read(BUFSIZ*sent_packet_num)
-            self.__signal.emit('开始断点续传\n')
-
+            self.__signal.emit('开始断点续传')
             #total_datasize += (filesize-BUFSIZ*sent_packet_num)
         while True:
             data = f.read(BUFSIZ)
             if not data:
                 break
             cliSock.send(data)
+            sent_size+=len(data)
+            self.__signal.emit('\r已发送: '+str("%f" % (sent_size/fileSize*100))+'%')
+    
         f.close()
-        data = cliSock.recv(BUFSIZ)
-        #print(data.decode())
-        if data.decode() == 'False Received':
+        #print('\r已发送：'+str("%f" % (100))+'%')
+    
+        info = cliSock.recv(3)
+        if info.decode()=='md5':
+            md5 = getFileMD5(filename)
+            # 发送原始文件MD5
+            self.__signal.emit(md5)
+            cliSock.send(md5.encode())
+            sendInfo = cliSock.recv(3)
+    
+        if info.decode()=='trc':
+            self.__signal.emit('True sent.')
+        else:
+            self.__signal.emit('False sent.'+filename)
             log = open('err.log', 'a')
             log.write(str(time.time())+' '+filename+' '+'False \n')
             log.close()
-
+    
         if is_compressed == 1:
             os.remove(filename)
-
+    
     def btn_send(self):
         mode = 'normal'
 
@@ -268,7 +276,8 @@ class MyMainServerForm(QMainWindow, Ui_Form):
             else:
                 print(str(total_datasize/(endTime-beginTime)/1024/1024*8)+' Mbps')
             '''
-            cliSock.send('\01'.encode())
+            endLen = 0xffffffff
+            cliSock.send(endLen.to_bytes(4, byteorder='big'))
             cliSock.close()
         except gaierror:
             self.textBrowser.insertPlainText('IP地址不正确！\n')
@@ -298,15 +307,6 @@ class MyMainServerForm(QMainWindow, Ui_Form):
 
     def btn_cancel(self):
         raise KeyboardInterrupt
-        relativePath = getFileList(self.src_path)
-        for filename in relativePath:
-            if os.path.exists(filename) and filename.endswith('tempzip'):
-                self.textBrowser.insertPlainText('删除'+filename+'\n')
-                QApplication.processEvents()  # 实时刷新
-                os.remove(filename)
-        self.textBrowser.insertPlainText('已清理传输缓存。\n')
-        self.textBrowser.moveCursor(self.textBrowser.textCursor().End)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
