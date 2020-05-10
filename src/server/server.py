@@ -158,6 +158,157 @@ def recv(cliSock, dst_path):
             os.remove(tempPath)
 
 
+def HeadAnalyse(data):
+    lenPath = int(data[:3])
+    lenRead = 3
+
+    filePath = data[lenRead:lenRead+lenPath]
+    lenRead += lenPath
+
+    is_compressed = int(data[lenRead:lenRead+1])
+    lenRead += 1
+
+    lenMD5s = 32
+    if is_compressed == 1:
+        lenMD5s = 64
+    
+    md5s = data[lenRead:lenRead+lenMD5s]
+    lenRead += lenMD5s
+
+    fileSize = int(data[lenRead:])
+
+    return filePath, is_compressed, fileSize, md5s
+
+def recvNew(cliSock, dst_path):
+    while True:
+        data = cliSock.recv(BUFSIZ)  # 接收文件名或错误信息
+        if len(data) == 0:
+            print('客户端可能中断了连接')
+            return -1
+        if data.decode() == '\01':
+            print('End')
+            return 0
+
+        filePath, is_compressed, fileSize, md5s = HeadAnalyse(data)
+        
+        filePath = filePath.replace('\\', '/')  # 适配Linux路径
+        savePath = Path(dst_path).joinpath(filePath)
+        tempPath = savePath.parent.joinpath(savePath.name+'fileinfotmp')
+        originalSavePath = ''
+        Path(savePath.parent).mkdir(parents=True, exist_ok=True)
+        if is_compressed == 1:
+            #print('compressed')
+            originalSavePath = savePath
+            savePath = savePath.parent.joinpath(
+                originalSavePath.name+'tempzip')
+
+        uncomparessed_md5 = ''
+        md5 = '' 
+        if is_compressed == 1:
+            uncomparessed_md5 = md5s[:32]
+            md5 = md5s[32:]
+        else:
+            md5 = md5s
+
+        is_append = False
+        if os.path.exists(savePath):
+            if os.path.exists(tempPath):
+                ftemp = open(tempPath, 'r')
+                ftempList = ftemp.readlines()
+                ftemp.close()
+                oldmd5 = ftempList[0].rstrip('\n')
+                received_packet_num = int(ftempList[1])
+                if oldmd5 == md5:
+                    print('准备断点续传')
+                    cliSock.send(str(received_packet_num).encode())
+                    is_append = True
+                else:
+                    print('old md5=', oldmd5, '$\nnew md5=', md5, '$')
+                    print('客户端文件有更新')
+                    cliSock.send('all'.encode())
+            else:
+                oldmd5 = getFileMD5(savePath)
+                if oldmd5 == md5:
+                    print('不必更新')
+                    cliSock.send('none'.encode())
+                    continue
+                else:
+                    print('客户端文件有更新')
+                    cliSock.send('all'.encode())
+        elif is_compressed == 1 and os.path.exists(originalSavePath):
+            old_uncomparessed_md5 = getFileMD5(originalSavePath)
+            if old_uncomparessed_md5 == uncomparessed_md5:
+                print('不必更新')
+                cliSock.send('none'.encode())
+                continue
+        else:
+            cliSock.send('all'.encode())
+
+        received_size = 0
+        packet_num = 0
+        if is_append:
+            f = open(savePath, 'ab')
+            packet_num += received_packet_num
+            received_size += received_packet_num*BUFSIZ
+        else:
+            f = open(savePath, 'wb')
+
+        # beginTime = time.time()
+
+        # 断点续传大法
+        while received_size < fileSize:
+            # nowTime = time.time()
+            print('\r已下载:'+str("%f" % (received_size/fileSize*100))+'%', end='')
+            data = cliSock.recv(BUFSIZ)
+            if len(data) == 0:
+                print('客户端可能中断了连接，等待下次连接断点续传。已传输包数：', packet_num)
+                f.close()
+                ftemp = open(savePath.parent.joinpath(
+                    savePath.name+'fileinfotmp'), 'w')
+                ftemp.write(md5+'\n')
+                ftemp.write(str(packet_num))
+                ftemp.close()
+                return -1
+            packet_num += 1
+            f.write(data)
+            received_size += len(data)
+
+        f.close()
+        print('\r已下载：'+str("%f" % (received_size/fileSize*100))+'%')
+        '''
+        endTime = time.time()
+        if (endTime-beginTime == 0):
+            print('Speed=NaN MB/s')
+        else:
+            if(is_append):
+                speed = (fileSize-received_packet_num*BUFSIZ) / \
+                    (endTime-beginTime)
+            else:
+                speed = fileSize/(endTime-beginTime)
+            print('Speed='+str(speed/1024/1024)+' MB/s')
+        '''
+
+        md5Dst = getFileMD5(savePath)
+        if md5Dst == md5:
+            print('Received MD5 = ', md5)
+            if is_compressed == 1:
+                zfile = zipfile.ZipFile(savePath)
+                zfile.extractall(originalSavePath.parent)
+                #zfile.extractall(Path(dst_path).joinpath(os.path.dirname(originalSavePath)))
+                #print(os.path.dirname(originalSavePath).joinpath('\\'))
+                zfile.close()
+            cliSock.send('True Received '.encode())
+        else:
+            print('Received MD5 in fact = ', md5Dst, ' but expected = ', md5)
+            cliSock.send('False Received '.encode())
+
+        ##如果已经压缩文件且已经解压则删除压缩文件
+        if originalSavePath != '' and os.path.exists(originalSavePath):
+            os.remove(savePath)
+        if os.path.exists(tempPath):
+            os.remove(tempPath)
+
+
 def usage():
     print('File Tranfer Server by HaiyunPresentation')
     print('Usage: ')
@@ -177,7 +328,7 @@ def buildSock(dst_path, ip_addr, port):
 
         cliSock, addr = serSock.accept()
         print('...连接自：', addr)
-        recv(cliSock, dst_path)
+        recvNew(cliSock, dst_path)
         serSock.close()
         return 0
     except gaierror:

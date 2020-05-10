@@ -101,6 +101,90 @@ def send(cliSock, filename, src_path, mode):
     if is_compressed == 1:
         os.remove(filename)
 
+# 参数提供应为str 类型
+def sendHead(cliSock, lenPath, relPath, isCompress, fileSize, md5s):
+    cliSock.send((lenPath + relPath + isCompress  + md5s+ fileSize).encode())
+    info = cliSock.recv(BUFSIZ)
+    return info
+
+def sendNew(cliSock, filename, src_path, mode):
+    if not os.path.exists(filename):
+        print('找不到', filename)
+        return 0
+    filePath = Path(filename)
+    rel_path = ''
+    if(filePath.parent.name == ''):
+        rel_path = filename
+    else:
+        rel_path = str(filePath.parent.relative_to(
+            src_path).joinpath(filePath.name))
+    len_path = len(path)
+    if (len_path > 260):
+        print('路径过长')
+    else:
+        len_path = str(len_path)
+        for i in range(0, 3-len(len_path)):
+            len_path = '0'+len_path
+
+    filesize = os.path.getsize(filename)
+    #记录是否被压缩
+    is_compressed = 0
+    print('------\n文件：', filename, '原始大小：', str(filesize))
+    if mode=='compress' and filesize <= 1024*1024*10:
+        originalFilename = filename
+        filename += 'tempzip'
+        with zipfile.ZipFile(filename, mode='w') as zfile:
+            zfile.write(originalFilename, os.path.basename(originalFilename))
+        filesize = os.path.getsize(filename)
+        is_compressed = 1
+
+    # 根据压缩标记存放1至2个md5(未压缩源文件md5与压缩文件md5)
+    md5s=''
+    if is_compressed == 1:
+        md5s += getFileMD5(originalFilename)
+        #print('uncomparessed MD5: ',uncomparessed_md5)
+    md5s += getFileMD5(filename)
+    print('MD5: ', md5s[32:])
+    info = sendHead(cliSock, len_path, rel_path, str(is_compressed), filesize, md5s)
+    if info == b'none':
+        print('不必更新')
+        if is_compressed == 1 and os.path.exists(filename):
+            os.remove(filename)
+        return 0
+    f = open(filename, 'rb')
+
+    #global total_datasize  # 引用全局变量
+
+    if sendInfo == b'all':
+        print('开始发送')
+        #total_datasize += filesize
+    else:  # 断点续传
+        print(sendInfo)
+        try:
+            sent_packet_num = int(sendInfo)
+        except ValueError:
+            print('收到的信息有误。可能原因：服务器协议不一致或连接超时。')
+            f.close()
+            return 2
+        f.read(BUFSIZ*sent_packet_num)
+        print('开始断点续传')
+        #total_datasize += (filesize-BUFSIZ*sent_packet_num)
+    while True:
+        data = f.read(BUFSIZ)
+        if not data:
+            break
+        cliSock.send(data)
+    f.close()
+    data = cliSock.recv(BUFSIZ)
+    print(data.decode())
+    if data.decode()=='False Received':
+        log=open('err.log', 'a')
+        log.write(str(time.time())+' '+filename+' '+'False \n')
+        log.close()
+    
+    if is_compressed == 1:
+        os.remove(filename)
+
 
 def getFileList(folder_path):
     if os.path.isfile(folder_path):  # 文件
@@ -150,7 +234,7 @@ if __name__ == '__main__':
         cliSock = socket(AF_INET, SOCK_STREAM)
         cliSock.connect((ip_addr, port))
         for filename in relativePath:
-            if send(cliSock, filename, src_path, mode) == -1:
+            if sendNew(cliSock, filename, src_path, mode) == -1:
                 cliSock.close()
                 sys.exit(1)
         print('------\n传输完毕')
